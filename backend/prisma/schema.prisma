@@ -90,9 +90,10 @@ model Mission {
   description String?
   startDate   DateTime
   endDate     DateTime
-  status      String        @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED | IN_PROGRESS | COMPLETED | CANCELLED
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  status          String        @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED | IN_PROGRESS | COMPLETED | CANCELLED
+  rejectionReason String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   orgId String
   org   Organisation @relation(fields: [orgId], references: [id])
