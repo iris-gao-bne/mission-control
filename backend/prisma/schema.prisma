@@ -1,0 +1,136 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Tenant ──────────────────────────────────────────────────────────────────
+
+model Organisation {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  users    User[]
+  skills   Skill[]
+  missions Mission[]
+}
+
+// ─── Users & Roles ───────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String
+  password  String
+  name      String
+  role      String   // DIRECTOR | MISSION_LEAD | CREW_MEMBER
+  createdAt DateTime @default(now())
+
+  orgId String
+  org   Organisation @relation(fields: [orgId], references: [id])
+
+  skills          CrewSkill[]
+  availability    Availability[]
+  createdMissions Mission[]           @relation("MissionCreator")
+  assignments     MissionAssignment[]
+
+  @@unique([email, orgId])
+}
+
+// ─── Skills ──────────────────────────────────────────────────────────────────
+
+model Skill {
+  id       String @id @default(cuid())
+  name     String
+  category String
+
+  orgId String
+  org   Organisation @relation(fields: [orgId], references: [id])
+
+  crewSkills          CrewSkill[]
+  missionRequirements MissionRequirement[]
+
+  @@unique([name, orgId])
+}
+
+model CrewSkill {
+  id               String @id @default(cuid())
+  proficiencyLevel Int    // 1–5
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id])
+
+  @@unique([userId, skillId])
+}
+
+// ─── Availability (blackout windows) ─────────────────────────────────────────
+
+model Availability {
+  id        String   @id @default(cuid())
+  startDate DateTime
+  endDate   DateTime
+  reason    String?
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+}
+
+// ─── Missions ────────────────────────────────────────────────────────────────
+
+model Mission {
+  id          String        @id @default(cuid())
+  name        String
+  description String?
+  startDate   DateTime
+  endDate     DateTime
+  status      String        @default("DRAFT") // DRAFT | SUBMITTED | APPROVED | REJECTED | IN_PROGRESS | COMPLETED | CANCELLED
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  orgId String
+  org   Organisation @relation(fields: [orgId], references: [id])
+
+  createdById String
+  createdBy   User   @relation("MissionCreator", fields: [createdById], references: [id])
+
+  requirements MissionRequirement[]
+  assignments  MissionAssignment[]
+}
+
+model MissionRequirement {
+  id             String @id @default(cuid())
+  minProficiency Int    // 1–5
+  headcount      Int    @default(1)
+
+  missionId String
+  mission   Mission @relation(fields: [missionId], references: [id])
+
+  skillId String
+  skill   Skill   @relation(fields: [skillId], references: [id])
+
+  assignments MissionAssignment[]
+
+  @@unique([missionId, skillId])
+}
+
+model MissionAssignment {
+  id         String   @id @default(cuid())
+  assignedAt DateTime @default(now())
+
+  missionId String
+  mission   Mission @relation(fields: [missionId], references: [id])
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  missionRequirementId String?
+  missionRequirement   MissionRequirement? @relation(fields: [missionRequirementId], references: [id])
+
+  @@unique([missionId, userId])
+}
