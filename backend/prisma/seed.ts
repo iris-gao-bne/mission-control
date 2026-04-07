@@ -26,7 +26,7 @@ async function main() {
   // ORG 1 — Artemis Space Agency
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const artemis = await prisma.organisation.create({ data: { name: 'Artemis Space Agency' } })
+  const artemis = await prisma.organisation.create({ data: { name: 'Artemis Space Agency', slug: 'artemis' } })
 
   // ─── Skills ───────────────────────────────────────────────────────────────
   const [aEva, aOrbital, aNav, aMed, aSys, aProp] = await Promise.all([
@@ -39,7 +39,7 @@ async function main() {
   ])
 
   // ─── Users ────────────────────────────────────────────────────────────────
-  const aDirector = await prisma.user.create({
+  await prisma.user.create({
     data: { email: 'chen@artemis.space', password: pw, name: 'Dr. Chen Wei', role: 'DIRECTOR', orgId: artemis.id },
   })
   const aLead1 = await prisma.user.create({
@@ -49,16 +49,16 @@ async function main() {
     data: { email: 'okafor@artemis.space', password: pw, name: 'James Okafor', role: 'MISSION_LEAD', orgId: artemis.id },
   })
 
-  const [torres, kim, reeves, morgan, patel, webb, recruit] = await Promise.all([
-    prisma.user.create({ data: { email: 'torres@artemis.space',   password: pw, name: 'Alex Torres',   role: 'CREW_MEMBER', orgId: artemis.id } }),
-    prisma.user.create({ data: { email: 'kim@artemis.space',      password: pw, name: 'Sam Kim',        role: 'CREW_MEMBER', orgId: artemis.id } }),
-    prisma.user.create({ data: { email: 'reeves@artemis.space',   password: pw, name: 'Jordan Reeves',  role: 'CREW_MEMBER', orgId: artemis.id } }),
-    prisma.user.create({ data: { email: 'morgan@artemis.space',   password: pw, name: 'Casey Morgan',   role: 'CREW_MEMBER', orgId: artemis.id } }),
-    prisma.user.create({ data: { email: 'patel@artemis.space',    password: pw, name: 'Priya Patel',    role: 'CREW_MEMBER', orgId: artemis.id } }),
-    prisma.user.create({ data: { email: 'webb@artemis.space',     password: pw, name: 'Marcus Webb',    role: 'CREW_MEMBER', orgId: artemis.id } }),
-    // Edge case: crew member with no skills — matcher must handle gracefully
-    prisma.user.create({ data: { email: 'recruit@artemis.space',  password: pw, name: 'New Recruit',    role: 'CREW_MEMBER', orgId: artemis.id } }),
+  const [torres, kim, reeves, morgan, patel, webb] = await Promise.all([
+    prisma.user.create({ data: { email: 'torres@artemis.space',  password: pw, name: 'Alex Torres',  role: 'CREW_MEMBER', orgId: artemis.id } }),
+    prisma.user.create({ data: { email: 'kim@artemis.space',     password: pw, name: 'Sam Kim',       role: 'CREW_MEMBER', orgId: artemis.id } }),
+    prisma.user.create({ data: { email: 'reeves@artemis.space',  password: pw, name: 'Jordan Reeves', role: 'CREW_MEMBER', orgId: artemis.id } }),
+    prisma.user.create({ data: { email: 'morgan@artemis.space',  password: pw, name: 'Casey Morgan',  role: 'CREW_MEMBER', orgId: artemis.id } }),
+    prisma.user.create({ data: { email: 'patel@artemis.space',   password: pw, name: 'Priya Patel',   role: 'CREW_MEMBER', orgId: artemis.id } }),
+    prisma.user.create({ data: { email: 'webb@artemis.space',    password: pw, name: 'Marcus Webb',   role: 'CREW_MEMBER', orgId: artemis.id } }),
   ])
+  // Edge case: crew member with no skills — matcher must handle gracefully
+  await prisma.user.create({ data: { email: 'recruit@artemis.space', password: pw, name: 'New Recruit', role: 'CREW_MEMBER', orgId: artemis.id } })
 
   // ─── Crew Skills ──────────────────────────────────────────────────────────
   await prisma.crewSkill.createMany({
@@ -137,7 +137,7 @@ async function main() {
       createdById: aLead2.id,
     },
   })
-  const [reqMarsNav, reqMarsSys, reqMarsMed] = await Promise.all([
+  await Promise.all([
     prisma.missionRequirement.create({ data: { missionId: mMars.id, skillId: aNav.id,     minProficiency: 4, headcount: 1 } }),
     prisma.missionRequirement.create({ data: { missionId: mMars.id, skillId: aSys.id,     minProficiency: 3, headcount: 1 } }),
     prisma.missionRequirement.create({ data: { missionId: mMars.id, skillId: aMed.id,     minProficiency: 4, headcount: 1 } }),
@@ -215,7 +215,7 @@ async function main() {
   // ORG 2 — Helios Orbital Systems
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const helios = await prisma.organisation.create({ data: { name: 'Helios Orbital Systems' } })
+  const helios = await prisma.organisation.create({ data: { name: 'Helios Orbital Systems', slug: 'helios' } })
 
   // ─── Skills ───────────────────────────────────────────────────────────────
   const [hSolar, hComms, hPsych, hThermal, hEva, hRobotics] = await Promise.all([
@@ -228,7 +228,7 @@ async function main() {
   ])
 
   // ─── Users ────────────────────────────────────────────────────────────────
-  const hDirector = await prisma.user.create({
+  await prisma.user.create({
     data: { email: 'director@helios.orbital', password: pw, name: 'Amara Osei', role: 'DIRECTOR', orgId: helios.id },
   })
   const hLead1 = await prisma.user.create({

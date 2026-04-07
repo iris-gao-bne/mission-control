@@ -1,5 +1,6 @@
-import { Router } from 'express'
+import { Router } from "express";
+import { authRouter } from "./auth";
 
-export const router = Router()
+export const router = Router();
 
-// Routes will be mounted here as they are implemented
+router.use("/auth", authRouter);
