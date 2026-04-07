@@ -206,9 +206,7 @@ describe("GET /api/missions", () => {
 
   it("crew member sees only missions they are assigned to", async () => {
     const { body: assigned } = await createMissionViaApi();
-    const { body: unassigned } = await createMissionViaApi(lead2Token, {
-      name: "Unassigned",
-    });
+    await createMissionViaApi(lead2Token, { name: "Unassigned" });
 
     await prisma.missionAssignment.create({
       data: { missionId: assigned.id, userId: crewUserId },
@@ -966,5 +964,672 @@ describe("POST /api/missions/:id/transition", () => {
       });
       expect(res.status).toBe(409);
     });
+  });
+});
+
+// ─── GET /api/missions/:id/match ─────────────────────────────────────────────
+
+describe("GET /api/missions/:id/match", () => {
+  // mc1: skillA(4) + skillB(4), available          → score: proficiency 32 + avail 30 + workload 30 = 92
+  // mc2: skillA(5) + skillB(5), on leave in window → score: proficiency 40 + avail  0 + workload 30 = 70
+  // mc3: skillA(2), below any min-3 threshold → hard-filtered out of suggestions
+  // unusedSkill: no crew member has this → guarantees "no candidates" gap scenario
+  let mc1Id: string;
+  let mc2Id: string;
+  let mc3Id: string;
+  let unusedSkillId: string;
+
+  async function makeApproved(
+    reqs: { skillId: string; minProficiency: number; headcount: number }[] = [],
+  ) {
+    const lead = await prisma.user.findFirstOrThrow({
+      where: { orgId, role: "MISSION_LEAD", email: "lead1@m.org" },
+    });
+    const mission = await prisma.mission.create({
+      data: {
+        name: "Match Mission",
+        startDate: new Date(FUTURE_START),
+        endDate: new Date(FUTURE_END),
+        status: "APPROVED",
+        orgId,
+        createdById: lead.id,
+      },
+    });
+    if (reqs.length > 0) {
+      await prisma.missionRequirement.createMany({
+        data: reqs.map((r) => ({ missionId: mission.id, ...r })),
+      });
+    }
+    return mission;
+  }
+
+  beforeAll(async () => {
+    const pw = await bcrypt.hash(PASSWORD, 10);
+    const [c1, c2, c3] = await Promise.all([
+      prisma.user.create({
+        data: {
+          email: "mc1@m.org",
+          password: pw,
+          name: "MC One",
+          role: "CREW_MEMBER",
+          orgId,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          email: "mc2@m.org",
+          password: pw,
+          name: "MC Two",
+          role: "CREW_MEMBER",
+          orgId,
+        },
+      }),
+      prisma.user.create({
+        data: {
+          email: "mc3@m.org",
+          password: pw,
+          name: "MC Three",
+          role: "CREW_MEMBER",
+          orgId,
+        },
+      }),
+    ]);
+    mc1Id = c1.id;
+    mc2Id = c2.id;
+    mc3Id = c3.id;
+
+    await Promise.all([
+      prisma.crewSkill.create({
+        data: { userId: mc1Id, skillId: skillAId, proficiencyLevel: 4 },
+      }),
+      prisma.crewSkill.create({
+        data: { userId: mc1Id, skillId: skillBId, proficiencyLevel: 4 },
+      }),
+      prisma.crewSkill.create({
+        data: { userId: mc2Id, skillId: skillAId, proficiencyLevel: 5 },
+      }),
+      prisma.crewSkill.create({
+        data: { userId: mc2Id, skillId: skillBId, proficiencyLevel: 5 },
+      }),
+      prisma.crewSkill.create({
+        data: { userId: mc3Id, skillId: skillAId, proficiencyLevel: 2 },
+      }),
+    ]);
+    // mc2 is on leave for the entire mission window
+    await prisma.availability.create({
+      data: {
+        userId: mc2Id,
+        startDate: new Date(FUTURE_START),
+        endDate: new Date(FUTURE_END),
+        reason: "Leave",
+      },
+    });
+
+    // A skill nobody holds — used to trigger the "no candidates" gap path
+    const unusedSkill = await prisma.skill.create({
+      data: { name: "Unused Skill", category: "Test", orgId },
+    });
+    unusedSkillId = unusedSkill.id;
+  });
+
+  afterAll(async () => {
+    await prisma.availability.deleteMany({
+      where: { userId: { in: [mc1Id, mc2Id, mc3Id] } },
+    });
+    await prisma.crewSkill.deleteMany({
+      where: { userId: { in: [mc1Id, mc2Id, mc3Id] } },
+    });
+    await prisma.user.deleteMany({
+      where: { id: { in: [mc1Id, mc2Id, mc3Id] } },
+    });
+    await prisma.skill.deleteMany({ where: { id: unusedSkillId } });
+  });
+
+  // ── Auth and permissions ──────────────────────────────────────────────────
+
+  it("returns 401 without a token", async () => {
+    const mission = await makeApproved();
+    const res = await request(app).get(`/api/missions/${mission.id}/match`);
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a crew member", async () => {
+    const mission = await makeApproved();
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${crewToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a non-existent mission id", async () => {
+    const res = await request(app)
+      .get("/api/missions/nonexistentid000000000000/match")
+      .set("Authorization", `Bearer ${leadToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for a mission in a different org", async () => {
+    const mission = await makeApproved();
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${orgBLeadToken}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 for a DRAFT mission", async () => {
+    const mission = await seedMissionWithStatus("DRAFT");
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/APPROVED/);
+  });
+
+  it("returns 409 for an IN_PROGRESS mission", async () => {
+    const mission = await seedMissionWithStatus("IN_PROGRESS");
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    expect(res.status).toBe(409);
+  });
+
+  // ── Response structure ────────────────────────────────────────────────────
+
+  it("returns correct top-level shape: missionId, fullyMatched, requirements", async () => {
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.missionId).toBe(mission.id);
+    expect(typeof res.body.fullyMatched).toBe("boolean");
+    expect(Array.isArray(res.body.requirements)).toBe(true);
+  });
+
+  it("mission with no requirements returns fullyMatched: true and empty requirements", async () => {
+    const mission = await makeApproved();
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.fullyMatched).toBe(true);
+    expect(res.body.requirements).toEqual([]);
+  });
+
+  it("each requirement includes skill, minProficiency, headcount, suggestions, filled, unfilled", async () => {
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const req = res.body.requirements[0];
+    expect(req.skill.id).toBe(skillAId);
+    expect(req.minProficiency).toBe(3);
+    expect(req.headcount).toBe(1);
+    expect(Array.isArray(req.suggestions)).toBe(true);
+    expect(typeof req.filled).toBe("number");
+    expect(typeof req.unfilled).toBe("number");
+  });
+
+  it("each suggestion includes a score breakdown that sums to the total", async () => {
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const suggestion = res.body.requirements[0].suggestions[0];
+    const { proficiency, availability, workload } = suggestion.breakdown;
+    expect(suggestion.score).toBe(proficiency + availability + workload);
+  });
+
+  // ── Scoring ───────────────────────────────────────────────────────────────
+
+  it("hard filter: excludes crew whose proficiency is below minProficiency", async () => {
+    // mc3 has skillA proficiency 2; requirement needs min 3
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const ids = res.body.requirements[0].suggestions.map(
+      (s: { userId: string }) => s.userId,
+    );
+    expect(ids).not.toContain(mc3Id);
+  });
+
+  it("crew on leave during the mission window gets availability score of 0", async () => {
+    // mc2 (prof 5) is on leave for the whole mission window
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const mc2Suggestion = res.body.requirements[0].suggestions.find(
+      (s: { userId: string }) => s.userId === mc2Id,
+    );
+    expect(mc2Suggestion.breakdown.availability).toBe(0);
+  });
+
+  it("crew with no active missions gets maximum workload score of 30", async () => {
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const mc1Suggestion = res.body.requirements[0].suggestions.find(
+      (s: { userId: string }) => s.userId === mc1Id,
+    );
+    expect(mc1Suggestion.breakdown.workload).toBe(30);
+  });
+
+  it("crew on an active IN_PROGRESS mission gets a reduced workload score", async () => {
+    // Assign mc1 to a separate IN_PROGRESS mission first (workload ceiling = 3)
+    const lead = await prisma.user.findFirstOrThrow({
+      where: { orgId, role: "MISSION_LEAD", email: "lead1@m.org" },
+    });
+    const activeMission = await prisma.mission.create({
+      data: {
+        name: "Active",
+        startDate: new Date("2026-01-01"),
+        endDate: new Date("2026-06-01"),
+        status: "IN_PROGRESS",
+        orgId,
+        createdById: lead.id,
+      },
+    });
+    await prisma.missionAssignment.create({
+      data: { missionId: activeMission.id, userId: mc1Id },
+    });
+
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    const mc1Suggestion = res.body.requirements[0].suggestions.find(
+      (s: { userId: string }) => s.userId === mc1Id,
+    );
+    // 1 active assignment out of ceiling 3 → workload = 30 * (1 - 1/3) = 20
+    expect(mc1Suggestion.breakdown.workload).toBe(20);
+  });
+
+  it("higher proficiency scores higher on the proficiency component", async () => {
+    // mc2 (prof 5) vs mc1 (prof 4)
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const suggestions = res.body.requirements[0].suggestions;
+    const mc1 = suggestions.find((s: { userId: string }) => s.userId === mc1Id);
+    const mc2 = suggestions.find((s: { userId: string }) => s.userId === mc2Id);
+    expect(mc2.breakdown.proficiency).toBeGreaterThan(
+      mc1.breakdown.proficiency,
+    );
+  });
+
+  it("assigned candidates appear first in suggestions, unassigned sorted by score after", async () => {
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const suggestions = res.body.requirements[0].suggestions;
+    const firstUnassignedIdx = suggestions.findIndex(
+      (s: { assigned: boolean }) => !s.assigned,
+    );
+    const lastAssignedIdx = suggestions.reduce(
+      (last: number, s: { assigned: boolean }, i: number) =>
+        s.assigned ? i : last,
+      -1,
+    );
+    if (firstUnassignedIdx !== -1 && lastAssignedIdx !== -1) {
+      expect(lastAssignedIdx).toBeLessThan(firstUnassignedIdx);
+    }
+  });
+
+  // ── Match results ─────────────────────────────────────────────────────────
+
+  it("fullyMatched: true and filled === headcount when all slots can be filled", async () => {
+    // mc1 qualifies (prof 4 >= 3, available)
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    expect(res.body.fullyMatched).toBe(true);
+    expect(res.body.requirements[0].filled).toBe(1);
+    expect(res.body.requirements[0].unfilled).toBe(0);
+  });
+
+  it("gap 'no candidates': no suggestions and gap message when no crew have the required skill", async () => {
+    // unusedSkill: no crew member holds it
+    const mission = await makeApproved([
+      { skillId: unusedSkillId, minProficiency: 1, headcount: 1 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const req = res.body.requirements[0];
+    expect(res.body.fullyMatched).toBe(false);
+    expect(req.suggestions).toHaveLength(0);
+    expect(req.filled).toBe(0);
+    expect(req.unfilled).toBe(1);
+    expect(req.gap).toMatch(/proficiency/);
+  });
+
+  it("gap 'insufficient candidates': headcount exceeds the number of qualifying crew", async () => {
+    // headcount 3, but only mc1 (prof 4) and mc2 (prof 5) qualify; mc3 (prof 2) is excluded
+    const mission = await makeApproved([
+      { skillId: skillAId, minProficiency: 3, headcount: 3 },
+    ]);
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+    const req = res.body.requirements[0];
+    expect(res.body.fullyMatched).toBe(false);
+    expect(req.suggestions.length).toBeGreaterThan(0);
+    expect(req.filled).toBe(2);
+    expect(req.unfilled).toBe(1);
+    expect(req.gap).toMatch(/[Ii]nsufficient/);
+  });
+
+  it("greedy pool depletion: a candidate assigned to one requirement is unavailable for the next", async () => {
+    // req1 needs skillA, req2 needs skillB — mc1 and mc2 both have both skills
+    // mc1 (available, score 92) is assigned to req1 first and depleted from the pool
+    // mc2 (on leave, score 70) then fills req2 — both requirements are satisfied
+    const lead = await prisma.user.findFirstOrThrow({
+      where: { orgId, role: "MISSION_LEAD", email: "lead1@m.org" },
+    });
+    const mission = await prisma.mission.create({
+      data: {
+        name: "Depletion Mission",
+        startDate: new Date(FUTURE_START),
+        endDate: new Date(FUTURE_END),
+        status: "APPROVED",
+        orgId,
+        createdById: lead.id,
+      },
+    });
+    await prisma.missionRequirement.createMany({
+      data: [
+        {
+          missionId: mission.id,
+          skillId: skillAId,
+          minProficiency: 3,
+          headcount: 1,
+        },
+        {
+          missionId: mission.id,
+          skillId: skillBId,
+          minProficiency: 3,
+          headcount: 1,
+        },
+      ],
+    });
+
+    const res = await request(app)
+      .get(`/api/missions/${mission.id}/match`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(res.body.fullyMatched).toBe(true);
+    const [req1, req2] = res.body.requirements;
+    const req1Assigned = req1.suggestions.filter(
+      (s: { assigned: boolean }) => s.assigned,
+    );
+    const req2Assigned = req2.suggestions.filter(
+      (s: { assigned: boolean }) => s.assigned,
+    );
+    expect(req1Assigned).toHaveLength(1);
+    expect(req2Assigned).toHaveLength(1);
+    // Pool depletion: the same candidate cannot be assigned to both requirements
+    expect(req1Assigned[0].userId).not.toBe(req2Assigned[0].userId);
+  });
+});
+
+// ─── POST /api/missions/:id/assign ───────────────────────────────────────────
+
+describe("POST /api/missions/:id/assign", () => {
+  let assignCrew2Id: string;
+
+  async function makeApprovedWithReq() {
+    const lead = await prisma.user.findFirstOrThrow({
+      where: { orgId, role: "MISSION_LEAD", email: "lead1@m.org" },
+    });
+    const mission = await prisma.mission.create({
+      data: {
+        name: "Assign Mission",
+        startDate: new Date(FUTURE_START),
+        endDate: new Date(FUTURE_END),
+        status: "APPROVED",
+        orgId,
+        createdById: lead.id,
+      },
+    });
+    const req = await prisma.missionRequirement.create({
+      data: {
+        missionId: mission.id,
+        skillId: skillAId,
+        minProficiency: 1,
+        headcount: 2,
+      },
+    });
+    return { mission, req };
+  }
+
+  async function callAssign(
+    missionId: string,
+    token: string,
+    assignments: object[],
+  ) {
+    return request(app)
+      .post(`/api/missions/${missionId}/assign`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ assignments });
+  }
+
+  beforeAll(async () => {
+    const pw = await bcrypt.hash(PASSWORD, 10);
+    const c = await prisma.user.create({
+      data: {
+        email: "ac2@m.org",
+        password: pw,
+        name: "Assign Crew 2",
+        role: "CREW_MEMBER",
+        orgId,
+      },
+    });
+    assignCrew2Id = c.id;
+  });
+
+  afterAll(async () => {
+    await prisma.user.deleteMany({ where: { id: assignCrew2Id } });
+  });
+
+  // ── Auth and permissions ──────────────────────────────────────────────────
+
+  it("returns 401 without a token", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await request(app)
+      .post(`/api/missions/${mission.id}/assign`)
+      .send({ assignments: [] });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 403 for a crew member", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await callAssign(mission.id, crewToken, []);
+    expect(res.status).toBe(403);
+  });
+
+  it("returns 404 for a non-existent mission", async () => {
+    const res = await callAssign("nonexistentid000000000000", leadToken, []);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 404 for a mission in a different org", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await callAssign(mission.id, orgBLeadToken, []);
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 409 for a non-APPROVED mission", async () => {
+    const mission = await seedMissionWithStatus("IN_PROGRESS");
+    const res = await callAssign(mission.id, directorToken, [
+      { userId: crewUserId },
+    ]);
+    expect(res.status).toBe(409);
+  });
+
+  // ── Happy path ────────────────────────────────────────────────────────────
+
+  it("director commits assignments and returns 204", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await callAssign(mission.id, directorToken, [
+      { userId: crewUserId },
+    ]);
+    expect(res.status).toBe(204);
+  });
+
+  it("mission lead commits assignments and returns 204", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await callAssign(mission.id, leadToken, [
+      { userId: crewUserId },
+    ]);
+    expect(res.status).toBe(204);
+  });
+
+  it("assignments are persisted and visible via GET /missions/:id", async () => {
+    const { mission } = await makeApprovedWithReq();
+    await callAssign(mission.id, leadToken, [{ userId: crewUserId }]);
+
+    const get = await request(app)
+      .get(`/api/missions/${mission.id}`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(get.body.assignments).toHaveLength(1);
+    expect(get.body.assignments[0].user.id).toBe(crewUserId);
+  });
+
+  it("stores requirementId on the assignment when provided", async () => {
+    const { mission, req } = await makeApprovedWithReq();
+    await callAssign(mission.id, leadToken, [
+      { userId: crewUserId, requirementId: req.id },
+    ]);
+
+    const get = await request(app)
+      .get(`/api/missions/${mission.id}`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(get.body.assignments[0].missionRequirementId).toBe(req.id);
+  });
+
+  it("stores null requirementId when requirementId is omitted", async () => {
+    const { mission } = await makeApprovedWithReq();
+    await callAssign(mission.id, leadToken, [{ userId: crewUserId }]);
+
+    const get = await request(app)
+      .get(`/api/missions/${mission.id}`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(get.body.assignments[0].missionRequirementId).toBeNull();
+  });
+
+  it("replaces all previous assignments with the new list (replace-all)", async () => {
+    const { mission } = await makeApprovedWithReq();
+    await callAssign(mission.id, leadToken, [{ userId: crewUserId }]);
+    await callAssign(mission.id, leadToken, [{ userId: assignCrew2Id }]);
+
+    const get = await request(app)
+      .get(`/api/missions/${mission.id}`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(get.body.assignments).toHaveLength(1);
+    expect(get.body.assignments[0].user.id).toBe(assignCrew2Id);
+  });
+
+  it("empty assignments array clears all existing assignments", async () => {
+    const { mission } = await makeApprovedWithReq();
+    await callAssign(mission.id, leadToken, [{ userId: crewUserId }]);
+    await callAssign(mission.id, leadToken, []);
+
+    const get = await request(app)
+      .get(`/api/missions/${mission.id}`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(get.body.assignments).toHaveLength(0);
+  });
+
+  it("can assign multiple crew members in a single call", async () => {
+    const { mission } = await makeApprovedWithReq();
+    await callAssign(mission.id, leadToken, [
+      { userId: crewUserId },
+      { userId: assignCrew2Id },
+    ]);
+
+    const get = await request(app)
+      .get(`/api/missions/${mission.id}`)
+      .set("Authorization", `Bearer ${leadToken}`);
+
+    expect(get.body.assignments).toHaveLength(2);
+  });
+
+  // ── Validation ────────────────────────────────────────────────────────────
+
+  it("returns 400 when a userId belongs to a different org", async () => {
+    const pw = await bcrypt.hash(PASSWORD, 10);
+    const orgBCrew = await prisma.user.create({
+      data: {
+        email: "orgbcrew@b.org",
+        password: pw,
+        name: "OrgB Crew",
+        role: "CREW_MEMBER",
+        orgId: orgBId,
+      },
+    });
+    const { mission } = await makeApprovedWithReq();
+    const res = await callAssign(mission.id, leadToken, [
+      { userId: orgBCrew.id },
+    ]);
+    expect(res.status).toBe(400);
+    await prisma.user.delete({ where: { id: orgBCrew.id } });
+  });
+
+  it("returns 400 when a requirementId does not belong to this mission", async () => {
+    const { mission: m1 } = await makeApprovedWithReq();
+    const { req: otherReq } = await makeApprovedWithReq();
+    const res = await callAssign(m1.id, leadToken, [
+      { userId: crewUserId, requirementId: otherReq.id },
+    ]);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when the assignments field is missing", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await request(app)
+      .post(`/api/missions/${mission.id}/assign`)
+      .set("Authorization", `Bearer ${leadToken}`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 when a userId is not a valid cuid", async () => {
+    const { mission } = await makeApprovedWithReq();
+    const res = await callAssign(mission.id, leadToken, [
+      { userId: "not-a-valid-id" },
+    ]);
+    expect(res.status).toBe(400);
   });
 });

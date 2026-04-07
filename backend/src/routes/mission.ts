@@ -5,6 +5,7 @@ import {
   createMissionSchema,
   updateMissionSchema,
   transitionSchema,
+  assignSchema,
 } from "../types/mission";
 import {
   listMissions,
@@ -15,6 +16,11 @@ import {
   transition,
   MissionError,
 } from "../services/missions.service";
+import {
+  runMatcher,
+  commitAssignments,
+  MatcherError,
+} from "../services/matcher.service";
 import { ROLES } from "../types/role";
 
 export const missionRouter = Router();
@@ -107,18 +113,60 @@ missionRouter.post(
   async (req: Request, res: Response): Promise<void> => {
     const parsed = transitionSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          error: "Invalid request",
-          details: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        error: "Invalid request",
+        details: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
       const mission = await transition(req.params.id, parsed.data, req.user!);
       res.json(mission);
     } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
+
+// GET /api/missions/:id/match — Director + Mission Lead
+missionRouter.get(
+  "/:id/match",
+  requireRole(ROLES.DIRECTOR, ROLES.MISSION_LEAD),
+  async (req: Request, res: Response): Promise<void> => {
+    try {
+      const result = await runMatcher(req.params.id, req.user!.orgId);
+      res.json(result);
+    } catch (err) {
+      if (err instanceof MatcherError) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
+      handleError(res, err);
+    }
+  },
+);
+
+// POST /api/missions/:id/assign — Director + Mission Lead
+missionRouter.post(
+  "/:id/assign",
+  requireRole(ROLES.DIRECTOR, ROLES.MISSION_LEAD),
+  async (req: Request, res: Response): Promise<void> => {
+    const parsed = assignSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid request",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+    try {
+      await commitAssignments(req.params.id, parsed.data, req.user!.orgId);
+      res.status(204).send();
+    } catch (err) {
+      if (err instanceof MatcherError) {
+        res.status(err.status).json({ error: err.message });
+        return;
+      }
       handleError(res, err);
     }
   },

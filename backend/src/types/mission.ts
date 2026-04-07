@@ -51,7 +51,17 @@ export const transitionSchema = z.object({
   reason: z.string().max(500).optional(),
 });
 
+export const assignSchema = z.object({
+  assignments: z.array(
+    z.object({
+      userId: z.string().cuid(),
+      requirementId: z.string().cuid().optional(),
+    }),
+  ),
+});
+
 export type CreateMissionInput = z.infer<typeof createMissionSchema>;
 export type UpdateMissionInput = z.infer<typeof updateMissionSchema>;
 export type RequirementInput = z.infer<typeof requirementSchema>;
 export type TransitionInput = z.infer<typeof transitionSchema>;
+export type AssignInput = z.infer<typeof assignSchema>;
