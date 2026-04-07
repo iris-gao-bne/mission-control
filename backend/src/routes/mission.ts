@@ -1,13 +1,18 @@
 import { Router, Request, Response } from "express";
 import { authenticate } from "../middleware/auth";
 import { requireRole } from "../middleware/rbac";
-import { createMissionSchema, updateMissionSchema } from "../types/mission";
+import {
+  createMissionSchema,
+  updateMissionSchema,
+  transitionSchema,
+} from "../types/mission";
 import {
   listMissions,
   getMission,
   createMission,
   updateMission,
   deleteMission,
+  transition,
   MissionError,
 } from "../services/missions.service";
 import { ROLES } from "../types/role";
@@ -89,6 +94,29 @@ missionRouter.patch(
         parsed.data,
         req.user!,
       );
+      res.json(mission);
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
+
+// POST /api/missions/:id/transition — all authenticated roles (permissions enforced in service)
+missionRouter.post(
+  "/:id/transition",
+  async (req: Request, res: Response): Promise<void> => {
+    const parsed = transitionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res
+        .status(400)
+        .json({
+          error: "Invalid request",
+          details: parsed.error.flatten().fieldErrors,
+        });
+      return;
+    }
+    try {
+      const mission = await transition(req.params.id, parsed.data, req.user!);
       res.json(mission);
     } catch (err) {
       handleError(res, err);

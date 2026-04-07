@@ -256,9 +256,10 @@ describe("POST /api/missions", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 403 for a director", async () => {
+  it("allows a director to create a mission", async () => {
     const res = await createMissionViaApi(directorToken);
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("DRAFT");
   });
 
   it("returns 403 for a crew member", async () => {
@@ -626,5 +627,344 @@ describe("DELETE /api/missions/:id", () => {
       .set("Authorization", `Bearer ${orgBLeadToken}`);
 
     expect(res.status).toBe(404);
+  });
+});
+
+// ─── POST /api/missions/:id/transition ───────────────────────────────────────
+
+async function callTransition(missionId: string, token: string, body: object) {
+  return request(app)
+    .post(`/api/missions/${missionId}/transition`)
+    .set("Authorization", `Bearer ${token}`)
+    .send(body);
+}
+
+describe("POST /api/missions/:id/transition", () => {
+  // ── Request-level validation ────────────────────────────────────────────────
+
+  it("returns 401 without a token", async () => {
+    const mission = await seedMissionWithStatus("DRAFT");
+    const res = await request(app)
+      .post(`/api/missions/${mission.id}/transition`)
+      .send({ to: "SUBMITTED" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 for an unrecognised target status", async () => {
+    const mission = await seedMissionWithStatus("DRAFT");
+    const res = await callTransition(mission.id, leadToken, { to: "LAUNCHED" });
+    expect(res.status).toBe(400);
+    expect(res.body.details.to).toBeDefined();
+  });
+
+  it("returns 404 for a mission belonging to a different org", async () => {
+    const mission = await seedMissionWithStatus("DRAFT");
+    const res = await callTransition(mission.id, orgBLeadToken, {
+      to: "SUBMITTED",
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("returns the full mission shape on a successful transition", async () => {
+    const mission = await seedMissionWithStatus("DRAFT");
+    const res = await callTransition(mission.id, leadToken, {
+      to: "SUBMITTED",
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("SUBMITTED");
+    expect(res.body.requirements).toBeDefined();
+    expect(res.body.assignments).toBeDefined();
+    expect(res.body.createdBy).toBeDefined();
+  });
+
+  // ── Happy paths — all valid transitions ─────────────────────────────────────
+
+  describe("DRAFT → SUBMITTED", () => {
+    it("succeeds when performed by the owning mission lead", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "SUBMITTED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("SUBMITTED");
+    });
+
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "SUBMITTED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("SUBMITTED");
+    });
+  });
+
+  describe("DRAFT → CANCELLED", () => {
+    it("succeeds when performed by the owning mission lead", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+  });
+
+  describe("SUBMITTED → APPROVED", () => {
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "APPROVED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("APPROVED");
+    });
+  });
+
+  describe("SUBMITTED → REJECTED", () => {
+    it("succeeds with an optional reason", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "REJECTED",
+        reason: "Insufficient EVA headcount for mission window",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("REJECTED");
+      expect(res.body.rejectionReason).toBe(
+        "Insufficient EVA headcount for mission window",
+      );
+    });
+
+    it("succeeds without a reason — rejectionReason is null", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "REJECTED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.rejectionReason).toBeNull();
+    });
+  });
+
+  describe("SUBMITTED → CANCELLED", () => {
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+
+    it("succeeds when performed by the owning mission lead", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+  });
+
+  describe("APPROVED → IN_PROGRESS", () => {
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("APPROVED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "IN_PROGRESS",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("IN_PROGRESS");
+    });
+  });
+
+  describe("APPROVED → CANCELLED", () => {
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("APPROVED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+  });
+
+  describe("IN_PROGRESS → COMPLETED", () => {
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("IN_PROGRESS");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "COMPLETED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("COMPLETED");
+    });
+  });
+
+  describe("IN_PROGRESS → CANCELLED", () => {
+    it("succeeds when performed by a director", async () => {
+      const mission = await seedMissionWithStatus("IN_PROGRESS");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("CANCELLED");
+    });
+  });
+
+  describe("REJECTED → DRAFT (reopen)", () => {
+    it("succeeds when performed by the owning mission lead", async () => {
+      const mission = await seedMissionWithStatus("REJECTED");
+      const res = await callTransition(mission.id, leadToken, { to: "DRAFT" });
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe("DRAFT");
+    });
+
+    it("clears rejectionReason on reopen", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      await callTransition(mission.id, directorToken, {
+        to: "REJECTED",
+        reason: "Needs more crew",
+      });
+
+      const reopen = await callTransition(mission.id, leadToken, {
+        to: "DRAFT",
+      });
+      expect(reopen.status).toBe(200);
+      expect(reopen.body.rejectionReason).toBeNull();
+    });
+  });
+
+  // ── Permission violations ───────────────────────────────────────────────────
+
+  describe("permission enforcement", () => {
+    it("returns 403 when a non-owner lead tries to submit", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, lead2Token, {
+        to: "SUBMITTED",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a crew member tries to submit", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, crewToken, {
+        to: "SUBMITTED",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a mission lead tries to approve", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "APPROVED",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a mission lead tries to reject", async () => {
+      const mission = await seedMissionWithStatus("SUBMITTED");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "REJECTED",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a mission lead tries to start an approved mission", async () => {
+      const mission = await seedMissionWithStatus("APPROVED");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "IN_PROGRESS",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a mission lead tries to cancel an approved mission", async () => {
+      const mission = await seedMissionWithStatus("APPROVED");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "CANCELLED",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a mission lead tries to complete an in-progress mission", async () => {
+      const mission = await seedMissionWithStatus("IN_PROGRESS");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "COMPLETED",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a director tries to reopen a rejected mission (owner only)", async () => {
+      const mission = await seedMissionWithStatus("REJECTED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "DRAFT",
+      });
+      expect(res.status).toBe(403);
+    });
+
+    it("returns 403 when a non-owner lead tries to reopen a rejected mission", async () => {
+      const mission = await seedMissionWithStatus("REJECTED");
+      const res = await callTransition(mission.id, lead2Token, { to: "DRAFT" });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // ── Invalid state machine moves ─────────────────────────────────────────────
+
+  describe("invalid transitions", () => {
+    it("returns 409 for DRAFT → APPROVED (skips SUBMITTED)", async () => {
+      const mission = await seedMissionWithStatus("DRAFT");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "APPROVED",
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 409 for APPROVED → SUBMITTED (backwards)", async () => {
+      const mission = await seedMissionWithStatus("APPROVED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "SUBMITTED",
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 409 for IN_PROGRESS → APPROVED (backwards)", async () => {
+      const mission = await seedMissionWithStatus("IN_PROGRESS");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "APPROVED",
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 409 for REJECTED → SUBMITTED (must reopen to DRAFT first)", async () => {
+      const mission = await seedMissionWithStatus("REJECTED");
+      const res = await callTransition(mission.id, leadToken, {
+        to: "SUBMITTED",
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 409 when trying to transition out of the terminal COMPLETED state", async () => {
+      const mission = await seedMissionWithStatus("COMPLETED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "DRAFT",
+      });
+      expect(res.status).toBe(409);
+    });
+
+    it("returns 409 when trying to transition out of the terminal CANCELLED state", async () => {
+      const mission = await seedMissionWithStatus("CANCELLED");
+      const res = await callTransition(mission.id, directorToken, {
+        to: "DRAFT",
+      });
+      expect(res.status).toBe(409);
+    });
   });
 });

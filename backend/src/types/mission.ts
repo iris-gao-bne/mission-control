@@ -36,6 +36,22 @@ export const updateMissionSchema = z
     { message: "endDate must be after startDate", path: ["endDate"] },
   );
 
+export const MISSION_STATUSES = [
+  "DRAFT",
+  "SUBMITTED",
+  "APPROVED",
+  "REJECTED",
+  "IN_PROGRESS",
+  "COMPLETED",
+  "CANCELLED",
+] as const;
+
+export const transitionSchema = z.object({
+  to: z.enum(MISSION_STATUSES),
+  reason: z.string().max(500).optional(),
+});
+
 export type CreateMissionInput = z.infer<typeof createMissionSchema>;
 export type UpdateMissionInput = z.infer<typeof updateMissionSchema>;
 export type RequirementInput = z.infer<typeof requirementSchema>;
+export type TransitionInput = z.infer<typeof transitionSchema>;
