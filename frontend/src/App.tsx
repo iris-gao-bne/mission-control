@@ -3,11 +3,9 @@ import { Layout } from "./components/Layout";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { MissionDetail } from "./pages/MissionDetail";
+import { Missions } from "./pages/Missions";
 import { Box } from "@chakra-ui/react";
 
-function Missions() {
-  return <Box>Missions (coming soon)</Box>;
-}
 function Crew() {
   return <Box>Crew (coming soon)</Box>;
 }
