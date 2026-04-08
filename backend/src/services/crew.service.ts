@@ -146,6 +146,31 @@ export async function replaceSkills(
   });
 }
 
+export async function updateAssignmentStatus(
+  targetUserId: string,
+  assignmentId: string,
+  status: "CONFIRMED" | "DECLINED",
+  requestingUser: AuthUser,
+) {
+  if (requestingUser.id !== targetUserId) {
+    throw new CrewError(403, "You can only update your own assignments");
+  }
+
+  const assignment = await prisma.missionAssignment.findUnique({
+    where: { id: assignmentId },
+  });
+
+  if (!assignment || assignment.userId !== targetUserId) {
+    throw new CrewError(404, "Assignment not found");
+  }
+
+  return prisma.missionAssignment.update({
+    where: { id: assignmentId },
+    data: { status },
+    select: { id: true, status: true },
+  });
+}
+
 export async function replaceAvailability(
   targetUserId: string,
   input: ReplaceAvailabilityInput,

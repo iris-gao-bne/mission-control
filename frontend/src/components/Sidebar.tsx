@@ -13,7 +13,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', icon: '◈', to: '/dashboard', roles: ['DIRECTOR', 'MISSION_LEAD', 'CREW_MEMBER'] },
   { label: 'Missions',  icon: '◎', to: '/missions',  roles: ['DIRECTOR', 'MISSION_LEAD', 'CREW_MEMBER'] },
-  { label: 'Crew',      icon: '◉', to: '/crew',      roles: ['DIRECTOR', 'MISSION_LEAD'] },
+  { label: 'Crew',      icon: '◉', to: '/crew',      roles: ['DIRECTOR', 'MISSION_LEAD', 'CREW_MEMBER'] },
 ]
 
 const ROLE_LABEL: Record<Role, string> = {

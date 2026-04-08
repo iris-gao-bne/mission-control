@@ -124,6 +124,7 @@ model MissionRequirement {
 model MissionAssignment {
   id         String   @id @default(cuid())
   assignedAt DateTime @default(now())
+  status     String   @default("PENDING") // PENDING | CONFIRMED | DECLINED
 
   missionId String
   mission   Mission @relation(fields: [missionId], references: [id])

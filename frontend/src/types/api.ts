@@ -51,7 +51,13 @@ export interface CrewMember {
   activeMissionCount: number;
 }
 
-export interface CrewMemberDetail extends CrewMember {
+// Detail response — standalone (does not include activeMissionCount; missions shown separately)
+export interface CrewMemberDetail {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+  skills: CrewSkill[];
   availability: Availability[];
 }
 
@@ -75,9 +81,12 @@ export interface MissionRequirement {
   // assignments are not nested here — group from Mission.assignments by missionRequirementId
 }
 
+export type AssignmentStatus = 'PENDING' | 'CONFIRMED' | 'DECLINED'
+
 export interface MissionAssignment {
   id: string;
   assignedAt: string;
+  status: AssignmentStatus;
   missionRequirementId: string | null;
   user: Pick<AuthUser, "id" | "name" | "email" | "role">;
 }

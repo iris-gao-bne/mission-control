@@ -6,8 +6,14 @@ import {
   getCrewMember,
   replaceSkills,
   replaceAvailability,
+  updateAssignmentStatus,
   CrewError,
 } from "../services/crew.service";
+import { z } from "zod";
+
+const assignmentStatusSchema = z.object({
+  status: z.enum(["CONFIRMED", "DECLINED"]),
+});
 
 export const crewRouter = Router();
 
@@ -46,12 +52,10 @@ crewRouter.patch(
   async (req: Request, res: Response): Promise<void> => {
     const parsed = replaceSkillsSchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          error: "Invalid request",
-          details: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        error: "Invalid request",
+        details: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
@@ -68,17 +72,42 @@ crewRouter.patch(
   async (req: Request, res: Response): Promise<void> => {
     const parsed = replaceAvailabilitySchema.safeParse(req.body);
     if (!parsed.success) {
-      res
-        .status(400)
-        .json({
-          error: "Invalid request",
-          details: parsed.error.flatten().fieldErrors,
-        });
+      res.status(400).json({
+        error: "Invalid request",
+        details: parsed.error.flatten().fieldErrors,
+      });
       return;
     }
     try {
       res.json(
         await replaceAvailability(req.params.id, parsed.data, req.user!),
+      );
+    } catch (err) {
+      handleError(res, err);
+    }
+  },
+);
+
+// PATCH /api/crew/:id/assignments/:assignmentId — crew member only
+crewRouter.patch(
+  "/:id/assignments/:assignmentId",
+  async (req: Request, res: Response): Promise<void> => {
+    const parsed = assignmentStatusSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({
+        error: "Invalid request",
+        details: parsed.error.flatten().fieldErrors,
+      });
+      return;
+    }
+    try {
+      res.json(
+        await updateAssignmentStatus(
+          req.params.id,
+          req.params.assignmentId,
+          parsed.data.status,
+          req.user!,
+        ),
       );
     } catch (err) {
       handleError(res, err);

@@ -5,6 +5,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { MissionDetail } from "./pages/MissionDetail";
 import { Missions } from "./pages/Missions";
 import { Crew } from "./pages/Crew";
+import { CrewDetail } from "./pages/CrewDetail";
 
 export function App() {
   return (
@@ -17,6 +18,7 @@ export function App() {
           <Route path="/missions" element={<Missions />} />
           <Route path="/missions/:id" element={<MissionDetail />} />
           <Route path="/crew" element={<Crew />} />
+          <Route path="/crew/:id" element={<CrewDetail />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
