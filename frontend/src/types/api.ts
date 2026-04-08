@@ -61,6 +61,35 @@ export interface CrewMemberDetail {
   availability: Availability[];
 }
 
+// ─── Matcher ──────────────────────────────────────────────────────────────────
+
+export interface CandidateScore {
+  userId: string
+  name: string
+  email: string
+  proficiency: number
+  score: number
+  breakdown: { proficiency: number; availability: number; workload: number }
+  assigned: boolean
+}
+
+export interface RequirementMatch {
+  requirementId: string
+  skill: { id: string; name: string; category: string }
+  minProficiency: number
+  headcount: number
+  suggestions: CandidateScore[]
+  filled: number
+  unfilled: number
+  gap?: string
+}
+
+export interface MatchResult {
+  missionId: string
+  fullyMatched: boolean
+  requirements: RequirementMatch[]
+}
+
 // ─── Missions ─────────────────────────────────────────────────────────────────
 
 export type MissionStatus =
