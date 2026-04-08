@@ -20,3 +20,4 @@ execSync("npx prisma db push --force-reset", {
     DATABASE_URL: TEST_DB_URL,
   },
 });
+56;
