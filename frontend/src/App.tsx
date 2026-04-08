@@ -4,11 +4,7 @@ import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { MissionDetail } from "./pages/MissionDetail";
 import { Missions } from "./pages/Missions";
-import { Box } from "@chakra-ui/react";
-
-function Crew() {
-  return <Box>Crew (coming soon)</Box>;
-}
+import { Crew } from "./pages/Crew";
 
 export function App() {
   return (

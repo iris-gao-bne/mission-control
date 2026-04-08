@@ -48,6 +48,7 @@ export interface CrewMember {
   email: string;
   role: Role;
   skills: CrewSkill[];
+  activeMissionCount: number;
 }
 
 export interface CrewMemberDetail extends CrewMember {

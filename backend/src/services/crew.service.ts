@@ -68,11 +68,22 @@ export async function listCrew(requestingUser: AuthUser) {
       ? { orgId, id: userId, role: ROLES.CREW_MEMBER }
       : { orgId, role: ROLES.CREW_MEMBER };
 
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     where,
-    select: listSelect,
+    select: {
+      ...listSelect,
+      assignments: {
+        where: { mission: { status: "IN_PROGRESS" } },
+        select: { id: true },
+      },
+    },
     orderBy: { name: "asc" },
   });
+
+  return users.map(({ assignments, ...u }) => ({
+    ...u,
+    activeMissionCount: assignments.length,
+  }));
 }
 
 export async function getCrewMember(
