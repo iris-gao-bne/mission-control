@@ -1,5 +1,6 @@
 import { Box, Flex, Text, VStack, Button, Divider } from '@chakra-ui/react'
 import { NavLink, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '../context/AuthContext'
 import type { Role } from '../types/api'
 
@@ -34,12 +35,14 @@ function userInitials(name: string) {
 export function Sidebar() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
 
   if (!user) return null
 
   const visibleItems = NAV_ITEMS.filter((item) => item.roles.includes(user.role))
 
   function handleLogout() {
+    queryClient.clear()
     logout()
     navigate('/login', { replace: true })
   }

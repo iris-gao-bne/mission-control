@@ -14,12 +14,14 @@ import {
 } from "@chakra-ui/react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { useLoginMutation } from "../hooks/useAuth";
 
 export function Login() {
   const navigate = useNavigate();
   const { login } = useAuth();
+  const queryClient = useQueryClient();
   const loginMutation = useLoginMutation();
 
   const [slug, setSlug] = useState("");
@@ -37,6 +39,7 @@ export function Login() {
       { slug: slug.trim(), email: email.trim(), password },
       {
         onSuccess: (response) => {
+          queryClient.clear();
           login(response);
           navigate("/dashboard", { replace: true });
         },
