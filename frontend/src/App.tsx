@@ -1,16 +1,14 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { Layout } from './components/Layout'
-import { Login } from './pages/Login'
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Layout } from "./components/Layout";
+import { Login } from "./pages/Login";
+import { Dashboard } from "./pages/Dashboard";
+import { Box } from "@chakra-ui/react";
 
-// Placeholder pages — replaced as each page is built
-function Dashboard() {
-  return <div>Dashboard (coming soon)</div>
-}
 function Missions() {
-  return <div>Missions (coming soon)</div>
+  return <Box>Missions (coming soon)</Box>;
 }
 function Crew() {
-  return <div>Crew (coming soon)</div>
+  return <Box>Crew (coming soon)</Box>;
 }
 
 export function App() {
@@ -27,5 +25,5 @@ export function App() {
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
-  )
+  );
 }

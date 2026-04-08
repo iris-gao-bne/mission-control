@@ -11,42 +11,44 @@ import {
   VStack,
   Alert,
   AlertIcon,
-} from '@chakra-ui/react'
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useAuth } from '../context/AuthContext'
-import { useLoginMutation } from '../hooks/useAuth'
+} from "@chakra-ui/react";
+import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import { useLoginMutation } from "../hooks/useAuth";
 
 export function Login() {
-  const navigate = useNavigate()
-  const { login } = useAuth()
-  const loginMutation = useLoginMutation()
+  const navigate = useNavigate();
+  const { login } = useAuth();
+  const loginMutation = useLoginMutation();
 
-  const [slug, setSlug] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [slug, setSlug] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
 
-  const slugError = slug.trim() === '' && slug !== '' ? 'Organisation slug is required' : ''
-  const emailError = email !== '' && !email.includes('@') ? 'Enter a valid email' : ''
+  const slugError =
+    slug.trim() === "" && slug !== "" ? "Organisation slug is required" : "";
+  const emailError =
+    email !== "" && !email.includes("@") ? "Enter a valid email" : "";
 
   function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     loginMutation.mutate(
       { slug: slug.trim(), email: email.trim(), password },
       {
         onSuccess: (response) => {
-          login(response)
-          navigate('/dashboard', { replace: true })
+          login(response);
+          navigate("/dashboard", { replace: true });
         },
-      }
-    )
+      },
+    );
   }
 
   return (
     <Flex minH="100vh">
       {/* Left panel — branding */}
       <Flex
-        display={{ base: 'none', md: 'flex' }}
+        display={{ base: "none", md: "flex" }}
         direction="column"
         justify="center"
         align="flex-start"
@@ -55,7 +57,9 @@ export function Login() {
         bgGradient="linear(to-br, gray.900, blue.900)"
         color="white"
       >
-        <Text fontSize="3xl" mb={3}>🚀</Text>
+        <Text fontSize="3xl" mb={3}>
+          🚀
+        </Text>
         <Heading size="xl" mb={3} lineHeight="shorter">
           Mission Control
         </Heading>
@@ -74,9 +78,15 @@ export function Login() {
       >
         <Box w="full" maxW="400px">
           {/* Mobile brand */}
-          <Box display={{ base: 'block', md: 'none' }} mb={8} textAlign="center">
+          <Box
+            display={{ base: "block", md: "none" }}
+            mb={8}
+            textAlign="center"
+          >
             <Text fontSize="2xl">🚀</Text>
-            <Heading size="lg" mt={1}>Mission Control</Heading>
+            <Heading size="lg" mt={1}>
+              Mission Control
+            </Heading>
           </Box>
 
           <Box
@@ -89,7 +99,9 @@ export function Login() {
           >
             <VStack spacing={6} align="stretch">
               <Box>
-                <Heading size="md" color="gray.800">Sign in</Heading>
+                <Heading size="md" color="gray.800">
+                  Sign in
+                </Heading>
                 <Text color="gray.500" fontSize="sm" mt={1}>
                   Enter your organisation and credentials
                 </Text>
@@ -156,5 +168,5 @@ export function Login() {
         </Box>
       </Flex>
     </Flex>
-  )
+  );
 }
