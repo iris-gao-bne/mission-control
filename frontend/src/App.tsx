@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
+import { MissionDetail } from "./pages/MissionDetail";
 import { Box } from "@chakra-ui/react";
 
 function Missions() {
@@ -20,6 +21,7 @@ export function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/missions" element={<Missions />} />
+          <Route path="/missions/:id" element={<MissionDetail />} />
           <Route path="/crew" element={<Crew />} />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

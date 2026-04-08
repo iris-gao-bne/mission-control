@@ -71,7 +71,7 @@ export interface MissionRequirement {
   minProficiency: number;
   headcount: number;
   skill: Pick<Skill, "id" | "name" | "category">;
-  assignments: MissionAssignment[];
+  // assignments are not nested here — group from Mission.assignments by missionRequirementId
 }
 
 export interface MissionAssignment {
